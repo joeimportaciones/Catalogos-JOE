@@ -300,7 +300,15 @@
     background:#fff;outline:none;
   }
   .cli-field input:focus{border-color:var(--accent);}
-  .cli-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:-2px;}
+  .cli-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted);}
+  .cli-hintrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:-2px;}
+  .btn-mini{
+    font-family:var(--sans);font-size:11px;font-weight:600;white-space:nowrap;
+    padding:5px 10px;border-radius:3px;border:1px solid var(--line);
+    background:#fff;color:var(--accent);cursor:pointer;
+  }
+  .btn-mini:hover{background:var(--accent-soft);border-color:var(--accent);}
+  .btn-mini[hidden]{display:none;}
   @media(max-width:520px){ .cli-form{grid-template-columns:1fr;} }
   table.order-table{width:100%;border-collapse:collapse;font-size:13px;}
   table.order-table th{
@@ -403,7 +411,10 @@
         <div class="cli-field cli-wide"><label for="cliDireccion">Dirección</label><input id="cliDireccion" type="text" placeholder="Dirección de entrega"></div>
         <div class="cli-field cli-wide"><label for="cliCorreo">Correo electrónico</label><input id="cliCorreo" type="email" placeholder="correo@ejemplo.com"></div>
         <datalist id="clientesGuardados"></datalist>
-        <div class="cli-hint cli-wide" id="cliHint"></div>
+        <div class="cli-wide cli-hintrow">
+          <span class="cli-hint" id="cliHint"></span>
+          <button type="button" class="btn-mini" id="btnExportClientes" onclick="exportClientes()" hidden>⬇ Descargar clientes (Excel)</button>
+        </div>
       </div>
       <table class="order-table" id="orderTable">
         <thead><tr><th>Código</th><th>Producto</th><th>Cant.</th><th>P. Mayor</th><th>Subtotal</th></tr></thead>
@@ -618,6 +629,29 @@ function poblarClientes(){
   if(dl){ dl.innerHTML = list.map(c=>'<option value="'+(c.nombre||'').replace(/"/g,'&quot;')+'">').join(''); }
   const hint = document.getElementById('cliHint');
   if(hint){ hint.textContent = list.length ? ('★ ' + list.length + ' cliente(s) guardado(s) — escribe el nombre para autocompletar') : ''; }
+  const btn = document.getElementById('btnExportClientes');
+  if(btn){ btn.hidden = list.length===0; }
+}
+
+function exportClientes(){
+  const list = loadClientes();
+  const hint = document.getElementById('cliHint');
+  if(list.length===0){ if(hint) hint.textContent = 'No hay clientes guardados todavía.'; return; }
+  if(hint) hint.textContent = 'Generando Excel de clientes…';
+  loadXLSXLib().then(()=>{
+    const rows = [['Cliente','Teléfono','Dirección','Correo','Actualizado']];
+    list.slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''))
+      .forEach(c=> rows.push([c.nombre||'', c.telefono||'', c.direccion||'', c.correo||'', c.actualizado||'']));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [ {wch:28}, {wch:16}, {wch:40}, {wch:28}, {wch:14} ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Clientes_LENYES_${fecha}.xlsx`);
+    if(hint) hint.textContent = '✓ ' + list.length + ' cliente(s) descargado(s)';
+  }).catch(()=>{
+    if(hint) hint.textContent = 'Sin conexión: no se pudo generar el Excel de clientes.';
+  });
 }
 function autocompletarCliente(){
   const nombre = (document.getElementById('cliNombre').value||'').trim().toLowerCase();
