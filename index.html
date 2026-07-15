@@ -603,6 +603,11 @@ function getOrderEntries(){
     .sort((a,b)=>findProduct(a[0]).n.localeCompare(findProduct(b[0]).n));
 }
 
+/* ===== Modo dueño (solo el dueño ve/guarda la base de clientes) ===== */
+const OWNER_CLAVE = 'joe2026';          // clave del dueño — cámbiala si quieres
+const OWNER_FLAG_KEY = 'lenyes_owner';
+function esOwner(){ try { return localStorage.getItem(OWNER_FLAG_KEY)==='1'; } catch(e){ return false; } }
+
 /* ===== Persistencia de clientes (localStorage) ===== */
 const CLIENTES_KEY = 'lenyes_clientes_v1';
 function loadClientes(){
@@ -610,6 +615,7 @@ function loadClientes(){
   catch(e){ return []; }
 }
 function saveClienteActual(){
+  if(!esOwner()) return; // solo el dueño construye la base de clientes
   const cli = getCliente();
   if(!cli.nombre && !cli.telefono && !cli.correo) return; // nada útil que guardar
   const list = loadClientes();
@@ -625,11 +631,19 @@ function saveClienteActual(){
 }
 function poblarClientes(){
   const list = loadClientes().slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const row = document.querySelector('.cli-hintrow');
   const dl = document.getElementById('clientesGuardados');
-  if(dl){ dl.innerHTML = list.map(c=>'<option value="'+(c.nombre||'').replace(/"/g,'&quot;')+'">').join(''); }
   const hint = document.getElementById('cliHint');
-  if(hint){ hint.textContent = list.length ? ('★ ' + list.length + ' cliente(s) guardado(s) — escribe el nombre para autocompletar') : ''; }
   const btn = document.getElementById('btnExportClientes');
+  if(!esOwner()){
+    // clientes normales: sin base, sin autocompletado, sin botón
+    if(row) row.style.display = 'none';
+    if(dl) dl.innerHTML = '';
+    return;
+  }
+  if(row) row.style.display = '';
+  if(dl){ dl.innerHTML = list.map(c=>'<option value="'+(c.nombre||'').replace(/"/g,'&quot;')+'">').join(''); }
+  if(hint){ hint.textContent = list.length ? ('★ ' + list.length + ' cliente(s) guardado(s) — escribe el nombre para autocompletar') : 'Modo dueño activo — aún sin clientes guardados'; }
   if(btn){ btn.hidden = list.length===0; }
 }
 
@@ -654,6 +668,7 @@ function exportClientes(){
   });
 }
 function autocompletarCliente(){
+  if(!esOwner()) return;
   const nombre = (document.getElementById('cliNombre').value||'').trim().toLowerCase();
   if(!nombre) return;
   const c = loadClientes().find(x => (x.nombre||'').trim().toLowerCase()===nombre);
@@ -792,6 +807,18 @@ function buildAndDownloadExcel(entries){
 }
 
 document.getElementById('search').addEventListener('input', render);
+(function initOwner(){
+  try{
+    const params = new URLSearchParams(location.search);
+    if(params.has('dueno')){
+      const v = params.get('dueno');
+      if(v === OWNER_CLAVE){ localStorage.setItem(OWNER_FLAG_KEY,'1'); }
+      else if(v === 'off' || v === '0'){ localStorage.removeItem(OWNER_FLAG_KEY); }
+      // limpia el parámetro de la URL para no dejar la clave a la vista
+      if(history.replaceState){ history.replaceState(null,'',location.pathname); }
+    }
+  }catch(e){}
+})();
 document.getElementById('cliNombre').addEventListener('change', autocompletarCliente);
 poblarClientes();
 
