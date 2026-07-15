@@ -300,6 +300,7 @@
     background:#fff;outline:none;
   }
   .cli-field input:focus{border-color:var(--accent);}
+  .cli-hint{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:-2px;}
   @media(max-width:520px){ .cli-form{grid-template-columns:1fr;} }
   table.order-table{width:100%;border-collapse:collapse;font-size:13px;}
   table.order-table th{
@@ -397,10 +398,12 @@
     </div>
     <div class="modal-body">
       <div class="cli-form">
-        <div class="cli-field"><label for="cliNombre">Cliente</label><input id="cliNombre" type="text" placeholder="Nombre / razón social"></div>
+        <div class="cli-field"><label for="cliNombre">Cliente</label><input id="cliNombre" type="text" list="clientesGuardados" autocomplete="off" placeholder="Nombre / razón social"></div>
         <div class="cli-field"><label for="cliTelefono">Teléfono</label><input id="cliTelefono" type="tel" placeholder="09xxxxxxxx"></div>
         <div class="cli-field cli-wide"><label for="cliDireccion">Dirección</label><input id="cliDireccion" type="text" placeholder="Dirección de entrega"></div>
         <div class="cli-field cli-wide"><label for="cliCorreo">Correo electrónico</label><input id="cliCorreo" type="email" placeholder="correo@ejemplo.com"></div>
+        <datalist id="clientesGuardados"></datalist>
+        <div class="cli-hint cli-wide" id="cliHint"></div>
       </div>
       <table class="order-table" id="orderTable">
         <thead><tr><th>Código</th><th>Producto</th><th>Cant.</th><th>P. Mayor</th><th>Subtotal</th></tr></thead>
@@ -589,6 +592,44 @@ function getOrderEntries(){
     .sort((a,b)=>findProduct(a[0]).n.localeCompare(findProduct(b[0]).n));
 }
 
+/* ===== Persistencia de clientes (localStorage) ===== */
+const CLIENTES_KEY = 'lenyes_clientes_v1';
+function loadClientes(){
+  try { return JSON.parse(localStorage.getItem(CLIENTES_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveClienteActual(){
+  const cli = getCliente();
+  if(!cli.nombre && !cli.telefono && !cli.correo) return; // nada útil que guardar
+  const list = loadClientes();
+  const norm = s => (s||'').trim().toLowerCase();
+  const idx = list.findIndex(c =>
+    (cli.correo   && norm(c.correo)===norm(cli.correo)) ||
+    (cli.telefono && norm(c.telefono)===norm(cli.telefono)) ||
+    (cli.nombre   && norm(c.nombre)===norm(cli.nombre)));
+  const registro = Object.assign({}, cli, { actualizado: new Date().toISOString().slice(0,10) });
+  if(idx>=0) list[idx] = registro; else list.push(registro);
+  try { localStorage.setItem(CLIENTES_KEY, JSON.stringify(list)); } catch(e){}
+  poblarClientes();
+}
+function poblarClientes(){
+  const list = loadClientes().slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const dl = document.getElementById('clientesGuardados');
+  if(dl){ dl.innerHTML = list.map(c=>'<option value="'+(c.nombre||'').replace(/"/g,'&quot;')+'">').join(''); }
+  const hint = document.getElementById('cliHint');
+  if(hint){ hint.textContent = list.length ? ('★ ' + list.length + ' cliente(s) guardado(s) — escribe el nombre para autocompletar') : ''; }
+}
+function autocompletarCliente(){
+  const nombre = (document.getElementById('cliNombre').value||'').trim().toLowerCase();
+  if(!nombre) return;
+  const c = loadClientes().find(x => (x.nombre||'').trim().toLowerCase()===nombre);
+  if(!c) return;
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el && !el.value) el.value = val||''; };
+  set('cliTelefono', c.telefono);
+  set('cliDireccion', c.direccion);
+  set('cliCorreo', c.correo);
+}
+
 function buildOrderText(){
   const cli = getCliente();
   const entries = getOrderEntries();
@@ -630,6 +671,7 @@ function openModal(){
   totalRow.innerHTML = `<td colspan="2">TOTAL (${units} unidades)</td><td></td><td></td><td class="num">${money(total)}</td>`;
   tbody.appendChild(totalRow);
 
+  poblarClientes();
   document.getElementById('copyBox').value = buildOrderText();
   document.getElementById('copiedMsg').textContent = '';
   document.getElementById('modalBg').classList.add('show');
@@ -641,6 +683,7 @@ function copyOrder(){
   box.value = buildOrderText();
   box.select();
   document.execCommand('copy');
+  saveClienteActual();
   document.getElementById('copiedMsg').textContent = '✓ Copiado';
 }
 
@@ -710,10 +753,13 @@ function buildAndDownloadExcel(entries){
 
   const fecha = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `Pedido_LENYES_${fecha}.xlsx`);
+  saveClienteActual();
   document.getElementById('copiedMsg').textContent = '✓ Excel descargado';
 }
 
 document.getElementById('search').addEventListener('input', render);
+document.getElementById('cliNombre').addEventListener('change', autocompletarCliente);
+poblarClientes();
 
 
 document.getElementById('fecha-hoy').textContent = new Date().toLocaleDateString('es-EC', {year:'numeric',month:'long',day:'numeric'});
