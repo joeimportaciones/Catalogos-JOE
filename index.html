@@ -284,6 +284,23 @@
   .modal-head h2{font-family:var(--serif);font-size:19px;margin:0;}
   .modal-head button{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
   .modal-body{padding:18px 22px;overflow-y:auto;}
+  .cli-form{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;
+    margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line);
+  }
+  .cli-field{display:flex;flex-direction:column;gap:4px;}
+  .cli-field.cli-wide{grid-column:1 / -1;}
+  .cli-field label{
+    font-family:var(--mono);font-size:10px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted);
+  }
+  .cli-field input{
+    padding:8px 10px;border:1px solid var(--line);border-radius:3px;
+    font-family:var(--sans);font-size:13px;color:var(--ink);
+    background:#fff;outline:none;
+  }
+  .cli-field input:focus{border-color:var(--accent);}
+  @media(max-width:520px){ .cli-form{grid-template-columns:1fr;} }
   table.order-table{width:100%;border-collapse:collapse;font-size:13px;}
   table.order-table th{
     text-align:left;font-family:var(--mono);font-size:10.5px;
@@ -379,6 +396,12 @@
       <button onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
+      <div class="cli-form">
+        <div class="cli-field"><label for="cliNombre">Cliente</label><input id="cliNombre" type="text" placeholder="Nombre / razón social"></div>
+        <div class="cli-field"><label for="cliTelefono">Teléfono</label><input id="cliTelefono" type="tel" placeholder="09xxxxxxxx"></div>
+        <div class="cli-field cli-wide"><label for="cliDireccion">Dirección</label><input id="cliDireccion" type="text" placeholder="Dirección de entrega"></div>
+        <div class="cli-field cli-wide"><label for="cliCorreo">Correo electrónico</label><input id="cliCorreo" type="email" placeholder="correo@ejemplo.com"></div>
+      </div>
       <table class="order-table" id="orderTable">
         <thead><tr><th>Código</th><th>Producto</th><th>Cant.</th><th>P. Mayor</th><th>Subtotal</th></tr></thead>
         <tbody id="orderTbody"></tbody>
@@ -551,16 +574,49 @@ function clearOrder(){
   updateOrderBar();
 }
 
-function openModal(){
-  const entries = Object.entries(qtyState).filter(([c,q])=>q>0)
+function getCliente(){
+  const v = id => (document.getElementById(id).value || '').trim();
+  return {
+    nombre: v('cliNombre'),
+    telefono: v('cliTelefono'),
+    direccion: v('cliDireccion'),
+    correo: v('cliCorreo'),
+  };
+}
+
+function getOrderEntries(){
+  return Object.entries(qtyState).filter(([c,q])=>q>0)
     .sort((a,b)=>findProduct(a[0]).n.localeCompare(findProduct(b[0]).n));
+}
+
+function buildOrderText(){
+  const cli = getCliente();
+  const entries = getOrderEntries();
+  const lines = [];
+  lines.push('PEDIDO MAYORISTA — LENYES / JOE IMPORTACIONES');
+  lines.push('Fecha: ' + new Date().toLocaleDateString('es-EC'));
+  if(cli.nombre)    lines.push('Cliente: ' + cli.nombre);
+  if(cli.telefono)  lines.push('Teléfono: ' + cli.telefono);
+  if(cli.direccion) lines.push('Dirección: ' + cli.direccion);
+  if(cli.correo)    lines.push('Correo: ' + cli.correo);
+  lines.push('');
+  let total = 0, units = 0;
+  entries.forEach(([c,q])=>{
+    const p = findProduct(c);
+    const subtotal = (p.p||0)*q;
+    total += subtotal; units += q;
+    lines.push(`${p.c} | ${p.n} | Cant: ${q} | P.Unit: ${p.p!=null?money(p.p):'—'} | Subtotal: ${money(subtotal)}`);
+  });
+  lines.push('');
+  lines.push(`TOTAL: ${units} unidades — ${money(total)}`);
+  return lines.join('\n');
+}
+
+function openModal(){
+  const entries = getOrderEntries();
   const tbody = document.getElementById('orderTbody');
   tbody.innerHTML = '';
   let total = 0, units=0;
-  let textLines = [];
-  textLines.push('PEDIDO MAYORISTA — LENYES / JOE IMPORTACIONES');
-  textLines.push('Fecha: ' + new Date().toLocaleDateString('es-EC'));
-  textLines.push('');
   entries.forEach(([c,q])=>{
     const p = findProduct(c);
     const subtotal = (p.p||0)*q;
@@ -568,16 +624,13 @@ function openModal(){
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.c}</td><td>${p.n}</td><td class="num">${q}</td><td class="num">${p.p!=null?money(p.p):'—'}</td><td class="num">${money(subtotal)}</td>`;
     tbody.appendChild(tr);
-    textLines.push(`${p.c} | ${p.n} | Cant: ${q} | P.Unit: ${p.p!=null?money(p.p):'—'} | Subtotal: ${money(subtotal)}`);
   });
   const totalRow = document.createElement('tr');
   totalRow.className = 'order-total-row';
   totalRow.innerHTML = `<td colspan="2">TOTAL (${units} unidades)</td><td></td><td></td><td class="num">${money(total)}</td>`;
   tbody.appendChild(totalRow);
-  textLines.push('');
-  textLines.push(`TOTAL: ${units} unidades — ${money(total)}`);
 
-  document.getElementById('copyBox').value = textLines.join('\n');
+  document.getElementById('copyBox').value = buildOrderText();
   document.getElementById('copiedMsg').textContent = '';
   document.getElementById('modalBg').classList.add('show');
 }
@@ -585,6 +638,7 @@ function closeModal(){ document.getElementById('modalBg').classList.remove('show
 
 function copyOrder(){
   const box = document.getElementById('copyBox');
+  box.value = buildOrderText();
   box.select();
   document.execCommand('copy');
   document.getElementById('copiedMsg').textContent = '✓ Copiado';
@@ -623,9 +677,14 @@ function exportExcel(){
 }
 
 function buildAndDownloadExcel(entries){
+  const cli = getCliente();
   const rows = [];
   rows.push(['PEDIDO MAYORISTA — LENYES / JOE IMPORTACIONES']);
   rows.push(['Fecha:', new Date().toLocaleDateString('es-EC')]);
+  rows.push(['Cliente:', cli.nombre]);
+  rows.push(['Teléfono:', cli.telefono]);
+  rows.push(['Dirección:', cli.direccion]);
+  rows.push(['Correo:', cli.correo]);
   rows.push([]);
   rows.push(['Código','Producto','Cantidad','Precio Mayor (USD)','Subtotal (USD)']);
 
@@ -641,7 +700,7 @@ function buildAndDownloadExcel(entries){
   rows.push(['', '', units, 'TOTAL', Number(total.toFixed(2))]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [ {wch:10}, {wch:42}, {wch:10}, {wch:18}, {wch:16} ];
+  ws['!cols'] = [ {wch:12}, {wch:42}, {wch:10}, {wch:18}, {wch:16} ];
 
   // fusionar título en la fila 1
   ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:4} }];
