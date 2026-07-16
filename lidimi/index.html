@@ -394,6 +394,7 @@
     <div class="ob-actions">
       <button class="btn btn-ghost" onclick="clearOrder()">Vaciar</button>
       <button class="btn btn-primary" onclick="openModal()">Ver pedido</button>
+      <a class="btn btn-dark" href="../pedido/" style="text-decoration:none;">Pedido completo &#8594;</a>
     </div>
   </div>
 </div>
@@ -426,6 +427,7 @@
       <span class="copied-msg" id="copiedMsg"></span>
       <button class="btn btn-outline" onclick="copyOrder()">Copiar texto</button>
       <button class="btn btn-primary" style="background:var(--accent);color:#fff;" onclick="exportExcel()">Descargar Excel</button>
+      <a class="btn btn-outline" href="../pedido/" style="text-decoration:none;">Pedido completo &#8594;</a>
       <button class="btn btn-dark" onclick="closeModal()">Cerrar</button>
     </div>
   </div>
@@ -450,6 +452,15 @@ const RAW = JSON.parse(document.getElementById('product-data').textContent);
 const ALL_SORTED = [...RAW].sort((a,b)=>a.n.localeCompare(b.n));
 
 const qtyState = {}; // codigo -> qty
+
+/* ===== Pedido unificado multi-catalogo (localStorage compartido por origen) ===== */
+const BRAND = "LIDIMI";
+const MULTI_KEY = "joe_pedido_multi_v1";
+function _loadMulti(){ try{ return JSON.parse(localStorage.getItem(MULTI_KEY)||"{}"); }catch(e){ return {}; } }
+function _saveMulti(o){ try{ localStorage.setItem(MULTI_KEY, JSON.stringify(o)); }catch(e){} }
+function syncMulti(p, qty){ if(!p) return; var s=_loadMulti(); var k=BRAND+"||"+p.c; if(qty>0){ s[k]={brand:BRAND,c:p.c,cod:(p.cod||''),n:p.n,p:(p.p!=null?p.p:null),q:qty}; } else { delete s[k]; } _saveMulti(s); }
+function restoreFromMulti(){ var s=_loadMulti(); Object.keys(s).forEach(function(k){ var l=s[k]; if(l.brand===BRAND){ qtyState[l.c]=l.q; } }); }
+function clearMultiBrand(){ var s=_loadMulti(); Object.keys(s).forEach(function(k){ if(s[k].brand===BRAND) delete s[k]; }); _saveMulti(s); }
 
 const wrap = document.getElementById('wrap');
 
@@ -555,6 +566,7 @@ function setQty(c, val){
   let v = parseInt(val);
   if(isNaN(v) || v<0) v = 0;
   qtyState[c] = v;
+  syncMulti(findProduct(c), v);
   const input = document.getElementById('qty-'+c);
   if(input) input.value = v;
   const card = document.getElementById('card-'+c);
@@ -582,6 +594,7 @@ function updateOrderBar(){
 
 function clearOrder(){
   Object.keys(qtyState).forEach(c=>{ qtyState[c]=0; });
+  clearMultiBrand();
   render();
   updateOrderBar();
 }
@@ -823,7 +836,9 @@ poblarClientes();
 
 document.getElementById('fecha-hoy').textContent = new Date().toLocaleDateString('es-EC', {year:'numeric',month:'long',day:'numeric'});
 
+restoreFromMulti();
 render();
+updateOrderBar();
 </script>
 </body>
 </html>
