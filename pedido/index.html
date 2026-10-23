@@ -104,6 +104,10 @@ const BRAND_ORDER = ["LENYES","XO","ONIKUMA","JMARY","T&G","LIDIMI","LDNIO","JBL
 function loadCart(){ try{ return JSON.parse(localStorage.getItem(MULTI_KEY)||"{}"); }catch(e){ return {}; } }
 function saveCart(o){ try{ localStorage.setItem(MULTI_KEY, JSON.stringify(o)); }catch(e){} }
 function money(n){ return '$'+Number(n||0).toFixed(2); }
+/*JOE-TIER*/
+function tierMap(g){ var m={}; Object.keys(g).forEach(function(b){ var t=null, base=0; g[b].forEach(function(l){ if(l.tier) t=l.tier; base+=(l.p||0)*l.q; }); if(t) m[b]={min:t.min,label:t.label||'SGM',base:base,active:base>=t.min}; }); return m; }
+function unitOf(l,tm){ var t=tm[l.brand]; return (t && t.active && l.p2!=null) ? l.p2 : l.p; }
+function tierLine(b,tm){ var t=tm[b]; if(!t) return ''; return t.active ? 'Precio '+t.label+' aplicado en '+b+' (compra desde '+money(t.min)+')' : 'En '+b+': faltan '+money(t.min-t.base)+' para el precio '+t.label+' (compra desde '+money(t.min)+')'; }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function getCliente(){ const v=id=>(document.getElementById(id).value||'').trim(); return {nombre:v('cliNombre'),telefono:v('cliTelefono'),direccion:v('cliDireccion'),correo:v('cliCorreo')}; }
@@ -120,7 +124,7 @@ function grouped(){
   return g;
 }
 function render(){
-  const area=document.getElementById('cartArea'); const g=grouped();
+  const area=document.getElementById('cartArea'); const g=grouped(); const tm=tierMap(g);
   const brands=Object.keys(g).sort((a,b)=>{ const ia=BRAND_ORDER.indexOf(a),ib=BRAND_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
   if(brands.length===0){
     area.innerHTML='<div class="empty">Aún no has agregado productos.<br>Ve a los <a href="../">catálogos</a>, agrega productos con el botón <b>+</b>, y volverán a aparecer aquí para un solo pedido.</div>';
@@ -132,19 +136,19 @@ function render(){
     let bTotal=0,bUnits=0;
     let rows='';
     lines.forEach(l=>{
-      const sub=(l.p||0)*l.q; bTotal+=sub; bUnits+=l.q; gItems++;
+      const u=unitOf(l,tm); const sub=(u||0)*l.q; bTotal+=sub; bUnits+=l.q; gItems++;
       rows+=`<tr>
         <td class="code">${esc(l.cod)}</td>
         <td>${esc(l.n)}</td>
         <td class="num"><span class="qty"><button onclick="setQty('${l._key}', ${l.q-1})">−</button><input type="number" min="1" value="${l.q}" onchange="setQty('${l._key}', this.value)"><button onclick="setQty('${l._key}', ${l.q+1})">+</button></span></td>
-        <td class="num">${l.p!=null?money(l.p):'—'}</td>
+        <td class="num">${u!=null?money(u):'—'}</td>
         <td class="num">${money(sub)}</td>
         <td class="num"><button class="rm" title="Quitar" onclick="removeLine('${l._key}')">✕</button></td>
       </tr>`;
     });
     gTotal+=bTotal; gUnits+=bUnits;
     html+=`<div class="brand-block">
-      <div class="brand-head"><span>${esc(b)}</span><span>${bUnits} u · ${money(bTotal)}</span></div>
+      <div class="brand-head"><span>${esc(b)}</span><span>${bUnits} u · ${money(bTotal)}</span></div>${tm[b]?'<div style="padding:6px 12px;font-size:12.5px;font-weight:600;background:'+(tm[b].active?'#e7f3ea;color:#14532d':'#fff3cd;color:#7a5a00')+'">'+esc(tierLine(b,tm))+'</div>':''}
       <table><thead><tr><th>Código</th><th>Producto</th><th class="num">Cant.</th><th class="num">P. Mayor</th><th class="num">Subtotal</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   });
@@ -167,8 +171,9 @@ function copiarTexto(){
   L.push('Fecha: '+new Date().toLocaleDateString('es-EC'));
   if(c.nombre)L.push('Cliente: '+c.nombre); if(c.telefono)L.push('Teléfono: '+c.telefono);
   if(c.direccion)L.push('Dirección: '+c.direccion); if(c.correo)L.push('Correo: '+c.correo);
-  L.push(''); let tot=0,un=0;
-  lines.forEach(l=>{ const sub=(l.p||0)*l.q; tot+=sub; un+=l.q; L.push(`[${l.brand}] ${l.cod} | ${l.n} | Cant: ${l.q} | P.Unit: ${l.p!=null?money(l.p):'—'} | Subtotal: ${money(sub)}`); });
+  L.push(''); let tot=0,un=0; const tm=tierMap(grouped());
+  lines.forEach(l=>{ const u=unitOf(l,tm); const sub=(u||0)*l.q; tot+=sub; un+=l.q; L.push(`[${l.brand}] ${l.cod} | ${l.n} | Cant: ${l.q} | P.Unit: ${u!=null?money(u):'—'} | Subtotal: ${money(sub)}`); });
+  Object.keys(tm).forEach(b=>L.push(tierLine(b,tm)));
   L.push(''); L.push(`TOTAL: ${un} unidades — ${money(tot)}`);
   const ta=document.createElement('textarea'); ta.value=L.join('\n'); document.body.appendChild(ta); ta.select();
   try{ document.execCommand('copy'); }catch(e){}
@@ -206,9 +211,10 @@ async function buildExcelImg(lines){
   const thin={style:'thin',color:{argb:'FFE5DDD8'}};
   const ROWH=66, BOX=68, COLW0=103;
   let tot=0,un=0;
+  const tmx=tierMap(grouped());
   lines.forEach((l,idx)=>{
-    const sub=(l.p||0)*l.q; tot+=sub; un+=l.q;
-    const r=ws.addRow(['',l.brand,l.cod,l.n,l.q,l.p!=null?Number(l.p.toFixed(2)):null,Number(sub.toFixed(2))]);
+    const u=unitOf(l,tmx); const sub=(u||0)*l.q; tot+=sub; un+=l.q;
+    const r=ws.addRow(['',l.brand,l.cod,l.n,l.q,u!=null?Number(u.toFixed(2)):null,Number(sub.toFixed(2))]);
     r.height=ROWH;
     r.eachCell({includeEmpty:true},(cell,col)=>{ cell.alignment={vertical:'middle',wrapText:(col===4),horizontal:(col>=5?'right':'left')}; cell.border={top:thin,bottom:thin,left:thin,right:thin}; });
     r.getCell(6).numFmt='"$"#,##0.00'; r.getCell(7).numFmt='"$"#,##0.00';
@@ -238,7 +244,8 @@ function buildExcel(lines){
   rows.push([]);
   rows.push(['Marca','Código','Producto','Cantidad','Precio Mayor (USD)','Subtotal (USD)']);
   let tot=0,un=0;
-  lines.forEach(l=>{ const sub=(l.p||0)*l.q; tot+=sub; un+=l.q; rows.push([l.brand,l.cod,l.n,l.q, l.p!=null?Number(l.p.toFixed(2)):null, Number(sub.toFixed(2))]); });
+  const tmc=tierMap(grouped());
+  lines.forEach(l=>{ const u=unitOf(l,tmc); const sub=(u||0)*l.q; tot+=sub; un+=l.q; rows.push([l.brand,l.cod,l.n,l.q, u!=null?Number(u.toFixed(2)):null, Number(sub.toFixed(2))]); });
   rows.push([]); rows.push(['','','',un,'TOTAL',Number(tot.toFixed(2))]);
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:12},{wch:14},{wch:44},{wch:10},{wch:18},{wch:16}];
