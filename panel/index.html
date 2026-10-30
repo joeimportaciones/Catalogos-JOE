@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="only light">
+<title>Panel JOE</title>
+<style>
+:root{color-scheme:only light}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:14px;background:#f4f1ee;color:#231918}
+h1{font-size:20px;margin:4px 0 12px}h2{font-size:17px;margin:18px 0 8px}
+.c{background:#fff;border-radius:12px;padding:14px;margin:0 0 12px;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.c b{font-size:17px}.c p{margin:.3em 0;font-size:14px;word-break:break-word}
+.n{color:#8a5a00;font-size:13px}.v{color:#666}
+button{font:inherit;font-weight:700;border:0;border-radius:8px;color:#fff;padding:13px 20px;margin:8px 8px 0 0;cursor:pointer}
+button:disabled{opacity:.5}
+.ap{background:#1a7f37}.bl{background:#b42318}.ver{background:#555}
+.msg{padding:10px 12px;border-radius:8px;background:#e8f3ea;color:#14532d;margin:0 0 12px;font-size:14px}
+.err{background:#fde8e6;color:#8a1c14}
+</style>
+</head>
+<body>
+<h1>Registros del catálogo</h1>
+<div id="msg" class="msg" hidden></div>
+<div id="out"><p class="v">Cargando…</p></div>
+<p><button class="ver" id="rec">Actualizar</button></p>
+<script>
+(function () {
+  var API = "https://script.google.com/macros/s/AKfycbxkWW1RJ06-kNtqNZxqFE_WS7kOYxSePZ6EGFN7vb7xsZTKmLOJtPMUIkSmSe4Jz0KB/exec";
+  var S = (location.hash.match(/s=([0-9a-f]+)/) || [])[1] || "";
+  var out = document.getElementById("out"), msgEl = document.getElementById("msg");
+  function esc(x) { return String(x == null ? "" : x).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function msg(t, err) { msgEl.hidden = !t; msgEl.textContent = t || ""; msgEl.className = "msg" + (err ? " err" : ""); }
+  function call(p) {
+    p.s = S;
+    return fetch(API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(p), redirect: "follow" })
+      .then(function (r) { return r.json(); }).catch(function () { return { ok: false, error: "RED" }; });
+  }
+  function card(o, ap) {
+    return '<div class="c"><b>' + esc(o.nombre) + '</b><p>RUC/Cédula: ' + esc(o.ruc) + '</p><p>Teléfono: ' + esc(o.telefono) + '</p><p>Dirección: ' + esc(o.direccion) + '</p>' +
+      (o.nota ? '<p class="n">' + esc(o.nota) + '</p>' : "") +
+      (ap ? '<button class="ap" data-a="ap" data-id="' + esc(o.id) + '">APROBAR</button>' : "") +
+      '<button class="bl" data-a="bl" data-id="' + esc(o.id) + '">BLOQUEAR</button></div>';
+  }
+  function load() {
+    if (!S) { out.innerHTML = '<p class="v">Falta la clave en el enlace. Abre el enlace completo que te llegó al correo.</p>'; return; }
+    call({ a: "panel" }).then(function (r) {
+      if (!r.ok) { out.innerHTML = ""; return msg(r.error === "CREDENCIALES" ? "Enlace no válido o vencido." : "No hay conexión con el servidor. Toca Actualizar.", true); }
+      var h = "<h2>Pendientes (" + r.pendientes.length + ")</h2>" + (r.pendientes.length ? r.pendientes.map(function (o) { return card(o, true); }).join("") : '<p class="v">No hay registros por aprobar.</p>');
+      if (r.aprobados.length) h += "<h2>Últimos aprobados</h2>" + r.aprobados.map(function (o) { return card(o, false); }).join("");
+      out.innerHTML = h;
+    });
+  }
+  out.addEventListener("click", function (ev) {
+    var b = ev.target.closest("button[data-id]"); if (!b) return;
+    b.disabled = true; msg("");
+    call({ a: "decidir", id: b.getAttribute("data-id"), accion: b.getAttribute("data-a") }).then(function (r) {
+      if (r.ok) { msg((r.estado === "APROBADO" ? "Aprobado: " : "Bloqueado: ") + r.nombre); load(); }
+      else { b.disabled = false; msg("No se pudo. Inténtalo de nuevo.", true); }
+    });
+  });
+  document.getElementById("rec").onclick = function () { msg(""); load(); };
+  load();
+})();
+</script>
+</body>
+</html>
